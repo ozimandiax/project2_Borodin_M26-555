@@ -1,0 +1,97 @@
+name: Project checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.13.6"
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Install project
+        run: make install
+      - name: Lint
+        run: make lint
+      - name: Build distributions
+        run: uv build
+      - name: Check package metadata
+        run: uvx twine check dist/*
+      - name: Check CRUD, validation and cancellation
+        shell: bash
+        run: |
+          set -euo pipefail
+          make run <<'COMMANDS' > "$RUNNER_TEMP/session-first.log"
+          create_table ci_users name:str age:int is_active:bool
+          insert into ci_users values ("Sergei", 28, true)
+          insert into ci_users values ("Anna, Maria", 25, false)
+          select from ci_users
+          select from ci_users
+          update ci_users set age = 29 where ID = 1
+          select from ci_users where ID = 1
+          delete from ci_users where ID = 1
+          n
+          insert into ci_users values ("Broken", "wrong", true)
+          info ci_users
+          exit
+          COMMANDS
+          uv run python - <<'PY'
+          import json
+          import os
+
+          with open("data/ci_users.json", encoding="utf-8") as data_file:
+              rows = json.load(data_file)
+          assert rows == [
+              {"ID": 1, "name": "Sergei", "age": 29, "is_active": True},
+              {"ID": 2, "name": "Anna, Maria", "age": 25, "is_active": False},
+          ]
+          with open(
+              os.path.join(os.environ["RUNNER_TEMP"], "session-first.log"),
+              encoding="utf-8",
+          ) as log_file:
+              output = log_file.read()
+          assert "Операция отменена." in output
+          assert "Ошибка: Значение столбца" in output
+          assert "Количество записей: 2" in output
+          assert "Функция insert выполнилась за" in output
+          assert "Произошла непредвиденная ошибка" not in output
+          assert "Traceback" not in output
+          PY
+          make run <<'COMMANDS' > "$RUNNER_TEMP/session-second.log"
+          select from ci_users where ID = 1
+          delete from ci_users where ID = 1
+          y
+          select from ci_users
+          drop_table ci_users
+          y
+          list_tables
+          exit
+          COMMANDS
+          uv run python - <<'PY'
+          import json
+          import os
+
+          with open("db_meta.json", encoding="utf-8") as metadata_file:
+              assert json.load(metadata_file) == {}
+          assert not os.path.exists("data/ci_users.json")
+          with open(
+              os.path.join(os.environ["RUNNER_TEMP"], "session-second.log"),
+              encoding="utf-8",
+          ) as log_file:
+              output = log_file.read()
+          assert "Sergei" in output
+          assert "Запись с ID=1 успешно удалена" in output
+          assert 'Таблица "ci_users" успешно удалена.' in output
+          assert "Таблиц пока нет." in output
+          assert "Traceback" not in output
+          PY

@@ -2,7 +2,11 @@ import json
 import os
 
 from primitive_db.constants import (
+    CONTROL_CHARACTER_LIMIT,
     DATA_DIR,
+    JSON_ENCODING,
+    JSON_INDENT,
+    TABLE_FILE_EXTENSION,
     TABLE_INVALID_CHARACTERS,
     TABLE_RESERVED_NAMES,
 )
@@ -11,7 +15,7 @@ from primitive_db.constants import (
 def _load_json(filepath, default):
     """Прочитать JSON или вернуть значение для отсутствующего файла."""
     try:
-        with open(filepath, encoding="utf-8") as data_file:
+        with open(filepath, encoding=JSON_ENCODING) as data_file:
             return json.load(data_file)
     except FileNotFoundError:
         return default
@@ -19,8 +23,8 @@ def _load_json(filepath, default):
 
 def _save_json(filepath, data):
     """Проверить сериализацию и записать JSON в UTF-8."""
-    serialized = json.dumps(data, ensure_ascii=False, indent=4)
-    with open(filepath, "w", encoding="utf-8") as data_file:
+    serialized = json.dumps(data, ensure_ascii=False, indent=JSON_INDENT)
+    with open(filepath, "w", encoding=JSON_ENCODING) as data_file:
         data_file.write(serialized)
         data_file.write("\n")
 
@@ -50,7 +54,7 @@ def get_table_path(table_name):
         or table_name in (".", "..")
         or table_name.endswith((".", " "))
         or any(character in TABLE_INVALID_CHARACTERS for character in table_name)
-        or any(ord(character) < 32 for character in table_name)
+        or any(ord(character) < CONTROL_CHARACTER_LIMIT for character in table_name)
     ):
         raise ValueError("Ошибка: Недопустимое имя таблицы для файла данных.")
 
@@ -59,7 +63,9 @@ def get_table_path(table_name):
 
     data_directory = os.path.normcase(os.path.realpath(DATA_DIR))
     table_path = os.path.normcase(
-        os.path.realpath(os.path.join(data_directory, f"{table_name}.json"))
+        os.path.realpath(
+            os.path.join(data_directory, f"{table_name}{TABLE_FILE_EXTENSION}")
+        )
     )
     try:
         within_data_directory = (

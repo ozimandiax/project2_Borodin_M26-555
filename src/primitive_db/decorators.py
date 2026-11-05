@@ -45,6 +45,7 @@ def _error_message(error):
 def handle_db_errors(func):
     """Перехватить ошибку только на внешнем уровне вызовов декоратора."""
     def wrapper(*args, **kwargs):
+        """Обработать ошибку на внешнем уровне и восстановить глубину."""
         outermost = _error_handler_depth[0] == 0
         _error_handler_depth[0] += 1
         try:
@@ -63,7 +64,9 @@ def handle_db_errors(func):
 def confirm_action(action_name):
     """Создать декоратор, требующий подтверждения опасной операции."""
     def decorator(func):
+        """Добавить запрос подтверждения к переданной функции."""
         def wrapper(*args, **kwargs):
+            """Выполнить функцию только после явного подтверждения."""
             try:
                 answer = input(
                     f'Вы уверены, что хотите выполнить "{action_name}"? [y/n]: '
@@ -84,6 +87,7 @@ def confirm_action(action_name):
 def log_time(func):
     """Вывести время выполнения функции, включая ошибочный вызов."""
     def wrapper(*args, **kwargs):
+        """Измерить вызов и вывести время даже при исключении."""
         started_at = time.monotonic()
         try:
             return func(*args, **kwargs)
