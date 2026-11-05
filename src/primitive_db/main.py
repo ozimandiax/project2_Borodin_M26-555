@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+from primitive_db.engine import welcome
+
 
 def main():
-    """Вывести сообщение о запуске проекта."""
-    print("DB project is running!")
+    """Запустить консольное приложение."""
+    welcome()
 
 
 if __name__ == "__main__":
