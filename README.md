@@ -116,4 +116,6 @@ database
 Запись показывает установку wheel, создание таблицы, просмотр списка, обработку
 повторного создания, сохранение между запусками и удаление таблицы.
 
+[![Управление таблицами](https://asciinema.org/a/Y4pKG0Szb8Ee5aCK.svg)](https://asciinema.org/a/Y4pKG0Szb8Ee5aCK)
+
 [Скачать запись в формате asciicast](docs/table-management.cast).
