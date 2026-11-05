@@ -2,6 +2,18 @@
 
 import shlex
 
+from primitive_db.constants import (
+    BOOLEAN_LITERALS,
+    COMMANDS,
+    DOUBLE_QUOTE,
+    QUOTE_CHARACTERS,
+    TOKEN_MIXED,
+    TOKEN_PUNCTUATION,
+    TOKEN_QUOTED,
+    TOKEN_SYMBOL,
+    TOKEN_WORD,
+)
+
 
 def _tokenize(text):
     """Разделить текст на слова и знаки вне кавычек."""
@@ -13,8 +25,8 @@ def _tokenize(text):
             position += 1
             continue
 
-        if text[position] in "(),=":
-            tokens.append(("symbol", text[position]))
+        if text[position] in TOKEN_PUNCTUATION:
+            tokens.append((TOKEN_SYMBOL, text[position]))
             position += 1
             continue
 
@@ -28,15 +40,15 @@ def _tokenize(text):
             if quote is not None:
                 if character == quote:
                     quote = None
-                    if text[start] in "\"'" and first_quote_end is None:
+                    if text[start] in QUOTE_CHARACTERS and first_quote_end is None:
                         first_quote_end = position
-                elif character == "\\" and quote == '"':
+                elif character == "\\" and quote == DOUBLE_QUOTE:
                     position += 1
                     if position == len(text):
                         raise ValueError("Ошибка синтаксиса: незакрытая кавычка.")
-            elif character.isspace() or character in "(),=":
+            elif character.isspace() or character in TOKEN_PUNCTUATION:
                 break
-            elif character in "\"'":
+            elif character in QUOTE_CHARACTERS:
                 quote = character
             elif character == "\\":
                 position += 1
@@ -55,11 +67,11 @@ def _tokenize(text):
             raise ValueError("Ошибка синтаксиса: некорректные кавычки.") from error
 
         if first_quote_end == position - 1:
-            kind = "quoted"
-        elif any(character in "\"'" for character in raw_value):
-            kind = "mixed"
+            kind = TOKEN_QUOTED
+        elif any(character in QUOTE_CHARACTERS for character in raw_value):
+            kind = TOKEN_MIXED
         else:
-            kind = "word"
+            kind = TOKEN_WORD
         tokens.append((kind, value))
 
     return tokens
@@ -70,7 +82,7 @@ def _matches(tokens, position, expected):
     if position >= len(tokens):
         return False
     kind, value = tokens[position]
-    return kind in ("word", "symbol") and value.lower() == expected
+    return kind in (TOKEN_WORD, TOKEN_SYMBOL) and value.lower() == expected
 
 
 def _expect(tokens, position, expected):
@@ -85,7 +97,7 @@ def _read_name(tokens, position):
     if position >= len(tokens):
         raise ValueError("Ошибка синтаксиса: не указано имя таблицы или столбца.")
     kind, value = tokens[position]
-    if kind == "symbol" or not value.strip():
+    if kind == TOKEN_SYMBOL or not value.strip():
         raise ValueError("Ошибка синтаксиса: некорректное имя таблицы или столбца.")
     return value, position + 1
 
@@ -96,12 +108,12 @@ def _read_value(tokens, position):
         raise ValueError("Ошибка синтаксиса: не указано значение.")
 
     kind, value = tokens[position]
-    if kind == "quoted":
+    if kind == TOKEN_QUOTED:
         return value, position + 1
 
-    if kind == "word":
-        if value.lower() in ("true", "false"):
-            return value.lower() == "true", position + 1
+    if kind == TOKEN_WORD:
+        if value.lower() in BOOLEAN_LITERALS:
+            return BOOLEAN_LITERALS[value.lower()], position + 1
         digits = value[1:] if value[:1] in ("+", "-") else value
         if digits and digits.isdecimal():
             try:
@@ -257,6 +269,8 @@ def parse_command(user_input):
         return None
 
     command = tokens[0][1].lower()
+    if command not in COMMANDS:
+        raise ValueError(f"Функции {tokens[0][1]} нет. Попробуйте снова.")
     if command in ("help", "exit", "list_tables"):
         _require_end(tokens, 1)
         return {"command": command}
@@ -272,6 +286,4 @@ def parse_command(user_input):
         "update": _parse_update,
         "delete": _parse_delete,
     }
-    if command not in parsers:
-        raise ValueError(f"Функции {tokens[0][1]} нет. Попробуйте снова.")
     return parsers[command](tokens)
