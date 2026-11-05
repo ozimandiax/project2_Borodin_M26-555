@@ -5,6 +5,9 @@ TYPE_CLASSES = {"int": int, "str": str, "bool": bool}
 ID_NAME = "ID"
 ID_COLUMN = "ID:int"
 
+DB_ERROR = object()
+ACTION_CANCELLED = object()
+
 TABLE_INVALID_CHARACTERS = r'<>:"/\|?*'
 TABLE_RESERVED_NAMES = (
     "CON",

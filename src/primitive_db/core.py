@@ -1,7 +1,9 @@
 from primitive_db.constants import ID_COLUMN, ID_NAME, TYPE_CLASSES, VALID_TYPES
+from primitive_db.decorators import confirm_action, handle_db_errors, log_time
 from primitive_db.utils import get_table_path, load_table_data
 
 
+@handle_db_errors
 def prepare_columns(columns):
     """Проверить столбцы и подготовить схему с системным ID."""
     prepared_columns = [ID_COLUMN]
@@ -34,6 +36,7 @@ def prepare_columns(columns):
     return prepared_columns
 
 
+@handle_db_errors
 def create_table(metadata, table_name, columns):
     """Добавить таблицу с проверенной схемой в метаданные."""
     table_path = get_table_path(table_name)
@@ -53,6 +56,8 @@ def create_table(metadata, table_name, columns):
     return metadata
 
 
+@handle_db_errors
+@confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
     """Удалить существующую таблицу из метаданных."""
     if table_name not in metadata:
@@ -62,6 +67,7 @@ def drop_table(metadata, table_name):
     return metadata
 
 
+@handle_db_errors
 def get_schema(metadata, table_name):
     """Получить проверенную схему существующей таблицы."""
     if table_name not in metadata:
@@ -79,6 +85,7 @@ def get_schema(metadata, table_name):
     }
 
 
+@handle_db_errors
 def _validate_value(column_name, value, column_type):
     """Проверить точный тип значения без смешивания bool и int."""
     if type(value) is not TYPE_CLASSES[column_type]:
@@ -88,6 +95,7 @@ def _validate_value(column_name, value, column_type):
         )
 
 
+@handle_db_errors
 def validate_clause(schema, clause, allow_id=True):
     """Проверить имена и типы полей условия или обновления."""
     if clause is None:
@@ -105,6 +113,7 @@ def validate_clause(schema, clause, allow_id=True):
     return clause
 
 
+@handle_db_errors
 def validate_table_data(schema, table_data):
     """Проверить поля, типы и уникальность ID загруженных записей."""
     if not isinstance(table_data, list):
@@ -127,6 +136,8 @@ def validate_table_data(schema, table_data):
     return table_data
 
 
+@handle_db_errors
+@log_time
 def insert(metadata, table_name, values, table_data=None):
     """Проверить значения и вернуть данные с новой записью и уникальным ID."""
     schema = get_schema(metadata, table_name)
@@ -149,6 +160,7 @@ def insert(metadata, table_name, values, table_data=None):
     return [*table_data, record]
 
 
+@handle_db_errors
 def matches_clause(record, where_clause):
     """Сопоставить запись с равенствами, учитывая точные типы значений."""
     if where_clause is None:
@@ -161,6 +173,8 @@ def matches_clause(record, where_clause):
     )
 
 
+@handle_db_errors
+@log_time
 def select(table_data, where_clause=None):
     """Вернуть копии всех записей или записей, подходящих условию."""
     return [
@@ -168,12 +182,14 @@ def select(table_data, where_clause=None):
     ]
 
 
+@handle_db_errors
 def _require_condition(where_clause):
     """Потребовать непустое условие для изменения или удаления записей."""
     if not isinstance(where_clause, dict) or not where_clause:
         raise ValueError("Ошибка: Для изменения данных необходимо условие where.")
 
 
+@handle_db_errors
 def update(table_data, set_clause, where_clause):
     """Вернуть обновлённые записи без частичного изменения исходных данных."""
     _require_condition(where_clause)
@@ -199,6 +215,8 @@ def update(table_data, set_clause, where_clause):
     return updated_data
 
 
+@handle_db_errors
+@confirm_action("удаление записей")
 def delete(table_data, where_clause):
     """Вернуть записи, не соответствующие условию удаления."""
     _require_condition(where_clause)
