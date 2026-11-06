@@ -4,11 +4,16 @@ import os
 from primitive_db.constants import (
     CONTROL_CHARACTER_LIMIT,
     DATA_DIR,
+    FILE_COPY_CHUNK_SIZE,
     JSON_ENCODING,
     JSON_INDENT,
     TABLE_FILE_EXTENSION,
     TABLE_INVALID_CHARACTERS,
     TABLE_RESERVED_NAMES,
+    TEMP_FILE_MODE,
+    TEMP_FILE_PREFIX,
+    TEMP_FILE_SUFFIX,
+    TEMP_FILE_TOKEN_BYTES,
 )
 
 
@@ -21,12 +26,60 @@ def _load_json(filepath, default):
         return default
 
 
+def _create_temporary_file(filepath, mode, **options):
+    """Создать уникальный файл рядом с целевым для атомарной замены."""
+    directory = os.path.dirname(os.path.abspath(filepath))
+    while True:
+        token = os.urandom(TEMP_FILE_TOKEN_BYTES).hex()
+        temporary_path = os.path.join(
+            directory, f"{TEMP_FILE_PREFIX}{token}{TEMP_FILE_SUFFIX}"
+        )
+        try:
+            descriptor = os.open(
+                temporary_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                TEMP_FILE_MODE,
+            )
+        except FileExistsError:
+            continue
+        break
+    try:
+        return temporary_path, os.fdopen(descriptor, mode, **options)
+    except BaseException:
+        try:
+            os.close(descriptor)
+        except OSError:
+            # fdopen может сам закрыть дескриптор перед исключением.
+            pass
+        _discard_temporary_file(temporary_path)
+        raise
+
+
+def _discard_temporary_file(filepath):
+    """Удалить временный файл, не скрывая результат основной операции."""
+    try:
+        os.remove(filepath)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        print(f'Не удалось удалить временный файл "{filepath}": {error}')
+
+
 def _save_json(filepath, data):
-    """Проверить сериализацию и записать JSON в UTF-8."""
+    """Заменить JSON только после полной записи и закрытия временного файла."""
     serialized = json.dumps(data, ensure_ascii=False, indent=JSON_INDENT)
-    with open(filepath, "w", encoding=JSON_ENCODING) as data_file:
-        data_file.write(serialized)
-        data_file.write("\n")
+    temporary_path, data_file = _create_temporary_file(
+        filepath, "w", encoding=JSON_ENCODING, newline="\n"
+    )
+    try:
+        with data_file:
+            data_file.write(serialized)
+            data_file.write("\n")
+            data_file.flush()
+            os.fsync(data_file.fileno())
+        os.replace(temporary_path, filepath)
+    finally:
+        _discard_temporary_file(temporary_path)
 
 
 def load_metadata(filepath):
@@ -108,3 +161,49 @@ def delete_table_data(table_name):
         os.remove(table_path)
     except FileNotFoundError:
         pass
+
+
+def _backup_table_file(table_path):
+    """Сохранить байты таблицы в соседний файл перед её удалением."""
+    with open(table_path, "rb") as source:
+        backup_path, backup = _create_temporary_file(table_path, "wb")
+        try:
+            with backup:
+                while chunk := source.read(FILE_COPY_CHUNK_SIZE):
+                    backup.write(chunk)
+                backup.flush()
+                os.fsync(backup.fileno())
+        except BaseException:
+            _discard_temporary_file(backup_path)
+            raise
+    return backup_path
+
+
+def delete_table(table_name, metadata_filepath, updated_metadata):
+    """Удалить таблицу и сохранить метаданные с откатом при ошибке записи."""
+    table_path = get_table_path(table_name)
+    try:
+        backup_path = _backup_table_file(table_path)
+    except FileNotFoundError:
+        save_metadata(metadata_filepath, updated_metadata)
+        return
+
+    try:
+        delete_table_data(table_name)
+    except BaseException:
+        _discard_temporary_file(backup_path)
+        raise
+
+    try:
+        save_metadata(metadata_filepath, updated_metadata)
+    except BaseException:
+        try:
+            os.replace(backup_path, table_path)
+        except OSError as error:
+            raise OSError(
+                f'Не удалось восстановить таблицу "{table_name}". '
+                f'Резервная копия сохранена в "{backup_path}".'
+            ) from error
+        raise
+
+    _discard_temporary_file(backup_path)

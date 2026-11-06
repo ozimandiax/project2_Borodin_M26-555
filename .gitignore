@@ -4,5 +4,6 @@ __pycache__/
 *.egg-info
 .idea/
 .ruff_cache/
+.primitive-db-*.tmp
 db_meta.json
 data/

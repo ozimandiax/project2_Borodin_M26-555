@@ -23,6 +23,8 @@ jobs:
         run: make install
       - name: Lint
         run: make lint
+      - name: Test storage, query results and cache
+        run: make test
       - name: Build distributions
         run: uv build
       - name: Check package metadata

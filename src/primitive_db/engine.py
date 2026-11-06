@@ -18,7 +18,7 @@ from primitive_db.core import (
 from primitive_db.decorators import create_cacher, handle_db_errors
 from primitive_db.parser import parse_command
 from primitive_db.utils import (
-    delete_table_data,
+    delete_table,
     get_table_path,
     load_metadata,
     load_table_data,
@@ -101,11 +101,12 @@ def execute_table_command(command, metadata):
         schema = get_schema(metadata, table_name)
         if operation_aborted(schema):
             return schema
-        metadata = drop_table(metadata, table_name)
-        if operation_aborted(metadata):
-            return metadata
-        save_metadata(META_FILE, metadata)
-        delete_table_data(table_name)
+        updated_metadata = drop_table(metadata.copy(), table_name)
+        if operation_aborted(updated_metadata):
+            return updated_metadata
+        delete_table(table_name, META_FILE, updated_metadata)
+        metadata.clear()
+        metadata.update(updated_metadata)
         reset_select_cache()
         print(f'Таблица "{table_name}" успешно удалена.')
 
